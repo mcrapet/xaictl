@@ -56,12 +56,12 @@
 #define XAI_MOUSE_LL_DATA_LENGTH           (64 - 6*sizeof(unsigned char))
 #define XAI_MOUSE_LL_SET_PROFILE_SETTINGS  0x03
 #define XAI_MOUSE_LL_GET_PROFILE_SETTINGS  0x04
+#define XAI_MOUSE_LL_SET_CURRENT_PROFILE   0x0C
+#define XAI_MOUSE_LL_GET_CURRENT_PROFILE   0x0D
 #define XAI_MOUSE_LL_PING_OR_ACK           0x14
 #define XAI_MOUSE_LL_PONG_OR_RES           0x15
 #define XAI_MOUSE_LL_SET_PROFILE_NAME      0x17
 #define XAI_MOUSE_LL_GET_PROFILE_NAME      0x1A
-//#define XAI_MOUSE_LL_???                 0x0D // firmware version
-//#define XAI_MOUSE_LL_???                 0x0C
 //#define XAI_MOUSE_LL_???                 0x24
 
 struct xai_ll_message_header
@@ -174,6 +174,7 @@ struct xai_context
 
     struct xai_profile p[XAI_MOUSE_PROFILE_NUM];
     unsigned char cur_id;
+    unsigned char cur_index;     /* 0-based profile index */
 
     /* command lines options */
     int usb_debug;
@@ -219,8 +220,10 @@ static int xai_device_init (struct xai_context *);
 
 static int xai_profile_get_config (struct xai_context *, int, struct xai_profile *);
 static int xai_profile_set_config (struct xai_context *, int, struct xai_profile *);
+static int xai_profile_get_current_index (struct xai_context *, int *);
+static int xai_profile_set_current_index (struct xai_context *, int);
 static int xai_profile_get_name (struct xai_context *, int, struct xai_profile *);
-static int xai_profile_print (FILE *, struct xai_profile *);
+static int xai_profile_print (FILE *, struct xai_profile *, int);
 static int xai_profile_change_req (struct xai_profile *, unsigned long, char *);
 
 
@@ -342,7 +345,8 @@ static int xai_init (int vendor_id, int product_id, int interface,
             if ((ret = xai_usbhid_driver_workaround(ctx->usbhid_driver_intf, 0))
                     == RET_OK) {
                 if (usb_claim_interface(ctx->dev, interface) < 0) {
-                    fprintf(stderr, "err: usb_claim_interface: %s\n", usb_strerror());
+                    fprintf(stderr, "err: usb_claim_interface: %s\n",
+                            usb_strerror());
                 } else {
                     return ret;
                 }
@@ -459,7 +463,8 @@ static int xai_device_write_packet(usb_dev_handle *dev,
         if (ret == RET_OK) {
             if (in->header.operation != XAI_MOUSE_LL_PING_OR_ACK) {
                 usleep(5000);
-                ret = xai_device_transfer_packet(dev, (unsigned char *)in, PACKET_READ);
+                ret = xai_device_transfer_packet(dev, (unsigned char *)in,
+                        PACKET_READ);
             }
         }
     }
@@ -519,6 +524,11 @@ static int xai_device_init (struct xai_context *ctx)
                 goto device_init_err;
         }
 
+        i = XAI_MOUSE_PROFILE_NUM; // out of bound index
+        if (xai_profile_get_current_index(ctx, &i) != RET_OK)
+            goto device_init_err;
+
+        ctx->cur_index = (unsigned char)i;
         return RET_OK;
     }
 
@@ -822,6 +832,7 @@ static int xai_profile_set_config (struct xai_context *ctx, int index,
                             if (ctx->usb_debug)
                                 xai_device_packet_print(stderr, (unsigned char *)&msg, 0);
                         }
+
                     }
                 }
             }
@@ -831,13 +842,68 @@ static int xai_profile_set_config (struct xai_context *ctx, int index,
     return ret;
 }
 
+/*
+ * Get current used profile
+ * \param[in] index 0-based profile number
+ */
+static int xai_profile_get_current_index (struct xai_context *ctx, int *index)
+{
+    struct xai_ll_message msg;
+    struct xai_ll_message_header hdr;
+    int ret;
 
-static int xai_profile_print (FILE *out, struct xai_profile *p)
+    hdr.null_byte = 0;
+    hdr.operation = XAI_MOUSE_LL_GET_CURRENT_PROFILE;
+    hdr.id = ctx->cur_id;
+    hdr.part = 0;
+    hdr.argument1 = 0;
+    hdr.argument2 = 0;
+    ret = xai_device_read_packet(ctx->dev, &hdr, &msg);
+
+    if (ctx->usb_debug)
+        xai_device_packet_print(stderr, (unsigned char *)&msg, 0);
+
+    if (ret == RET_OK) {
+        *index = msg.header.part;
+        ctx->cur_id = msg.header.id;
+    }
+    return ret;
+}
+
+/*
+ * Set current used profile
+ * \param[in] index 0-based profile number
+ */
+static int xai_profile_set_current_index (struct xai_context *ctx, int index)
+{
+    struct xai_ll_message msg;
+    int ret;
+
+    memset(&msg, 0, sizeof(struct xai_ll_message));
+
+    msg.header.operation = XAI_MOUSE_LL_SET_CURRENT_PROFILE;
+    msg.header.id = ctx->cur_id;
+    msg.header.part = (unsigned char)index;
+    ret = xai_device_write_packet(ctx->dev, &msg);
+
+    if (ctx->usb_debug)
+        xai_device_packet_print(stderr, (unsigned char *)&msg, 0);
+
+    return ret;
+}
+
+static int xai_profile_print (FILE *out, struct xai_profile *p, int cur_flag)
 {
     int i, len;
 
-    len = fprintf(out, "%s\n", p->name);
-    for (i = 1; i < len; i++)
+    len = fprintf(out, "%s", p->name);
+
+    if (cur_flag)
+        fputs(" (current)\n", out);
+    else
+        fputc('\n', out);
+
+    for (i = 0; i < len; i++)
         fputc('-', out);
 
     fprintf(out, "\nCPI1 (led off)  : %d\n"
@@ -1260,13 +1326,25 @@ int main(int argc, char *argv[])
 
     if (newp.fields != 0) {
         ret = xai_profile_set_config (&ctx, profile_number, &newp);
-        if (ret != RET_OK)
+        if (ret == RET_OK) {
+
+            /* if current changeset apply to current profile, reload it */
+            if (profile_number == ctx.cur_index) {
+                ret = xai_profile_set_current_index(&ctx, profile_number);
+                if (ret != RET_OK)
+                    fprintf(stderr, "%s: error in xai_profile_set_current_index (%d)\n",
+                            XAI_MOUSE_PROGRAM_NAME, ret);
+            }
+
+        } else {
             fprintf(stderr, "%s: error in xai_profile_set_config (%d)\n",
                     XAI_MOUSE_PROGRAM_NAME, ret);
-    } else {
-        xai_profile_print(stdout, &ctx.p[profile_number]);
-    }
+        }
 
+    } else {
+        xai_profile_print(stdout, &ctx.p[profile_number],
+                profile_number == ctx.cur_index);
+    }
 
     xai_uninit(&ctx);
 

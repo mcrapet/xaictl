@@ -1,4 +1,4 @@
-SteelSeries XAI Mouse configuration tool
+SteelSeries XAI Mouse configuration tool (for Linux)
 
 It is written in C using libusb.
 
@@ -13,8 +13,8 @@ you'll need rights. Look for "hid unbind" in Google..
 
 1.1 Setup udev for user access
 
-# echo -n 'ATTRS{idVendor}=="1038", ATTRS{idProduct}=="1360", '                             >/etc/udev/rules.d/90-xai.rules
-# echo 'PROGRAM="/bin/sh -c '\''echo -n $id:1.2 >/sys/bus/usb/drivers/usbhid/unbind'\''"'  >>/etc/udev/rules.d/90-xai.rules
+# cat /etc/udev/rules.d/90-xai.rules
+ATTRS{idVendor}=="1038", ATTRS{idProduct}=="1360", PROGRAM="/bin/sh -c 'echo -n $id:1.2 >/sys/bus/usb/drivers/usbhid/unbind'"
 # /etc/init.d/udev restart
 
 2. Software limitations
@@ -25,8 +25,9 @@ you'll need rights. Look for "hid unbind" in Google..
 
 3. Known issues
 
-* Message read and message write functions are not reliable, It must be tuned.
+* Message read and message write functions are not reliable.
+  Sometimes you must execute the command 2 times for real write.
 
 4. Ideas
 
-* Modify several profiles at one:
+* Modify several profiles at once.
