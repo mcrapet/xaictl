@@ -1,0 +1,117 @@
+.TH "xaictl" "1" "September 6, 2010" "GPL" "Xai mouse configuration tool"
+.SH "NAME"
+xaictl \- Command-line configuration tool for SteelSeries XAI Mouse
+
+.SH "SYNOPSIS"
+.B xaictl
+[\fIOPTIONS\fP]...
+\fPPROFILE_NUMBER\fP
+
+.SH "DESCRIPTION"
+.B xaictl
+is used to control settings (sensibility, button mapping, ...) of your XAI mouse.
+Profile number is a value from 1 to 5.
+
+.SH OPTIONS
+
+.SS Configuration options
+.TP
+.BI -c, " " --c1 "=VALUE"
+Set CPI1 (led off) parameter. \fIVALUE\fR is a number from 100 to 5001 CPI.
+.TP
+.BI "   " " " --c2 "=VALUE"
+Set CPI1 (led on) parameter. \fIVALUE\fR is a number from 100 to 5001 CPI.
+.TP
+.BI -r, " " --rate "=SPEED"
+Set ExactRate parameter. \fISPEED\fR is a number from 125 to 1000 Hz.
+.TP
+.BI -a, " " --accel "=PERCENT"
+Set ExactAccel parameter. \fIPERCENT\fR is a number from 0 to 100.
+.TP
+.BI -f, " " --freemove "=UNIT"
+Set Freemove parameter. \fIUNIT\fR is a number from 0 to 10.
+.TP
+.BI "   " " " --aim "=UNIT"
+Set ExactAim parameter. \fIUNIT\fR is a number from 0 to 10.
+.TP
+.BI "   " " " --lcdb "=N"
+Set LCD brightness parameter. \fIN\fR is a number from 1 to 10.
+.TP
+.BI "   " " " --lcdc "=N"
+Set LCD contrast parameter. \fIN\fR is a number from 1 to 40.
+
+.SS Buttons mapping
+.TP
+\fIROLE\fR can take the following values: disable, left, middle, right, iebackward, ieforward, tiltleft, tiltright, wheelup, wheeldown.
+.PP
+There are also shortcut aliases: d, l, m, r, bw, fw, tl, tr, up, dw.
+
+.TP
+.BI "   " " " --b1 "=ROLE"
+Set button 1 mapping (default: left).
+.TP
+.BI "   " " " --b2 "=ROLE"
+Set button 2 mapping (default: middle).
+.TP
+.BI "   " " " --b3 "=ROLE"
+Set button 3 mapping (default: right).
+.TP
+.BI "   " " " --b4 "=ROLE"
+Set button 4 mapping (default: iebackward).
+.TP
+.BI "   " " " --b5 "=ROLE"
+Set button 5 mapping (default: ieforward).
+.TP
+.BI "   " " " --b6 "=ROLE"
+Set button 6 mapping (default: tiltright).
+.TP
+.BI "   " " " --b7 "=ROLE"
+Set button 7 mapping (default: tiltleft).
+.TP
+.BI "   " " " --b8 "=ROLE"
+Set button 8 mapping (default: wheelup).
+.TP
+.BI "   " " " --b9 "=ROLE"
+Set button 9 mapping (default: wheeldown).
+
+.SS General options
+.TP
+.B "   " --debug
+Debug mode, print USB frames on stderr.
+.TP
+.B "   " --rebind
+Rebind usb interface. Not done by default.
+.TP
+.B -h, --help
+Display this help and exit.
+.TP
+.B "   " --version
+Output version information and exit.
+
+.SH NOTES
+
+.SS 1) Unbind HID interface
+usbhid kernel driver will lock all 3 interfaces of XAI mouse. Interface n°2 is used for configuration only; so it is not required by usbhid driver.
+.B xaictl 
+will try to unbind the interface for you (you'll need root permissions).
+
+.PP
+You can also unbind manually interface:
+.nf
+# lsusb -d 1038:1360
+Bus 006 Device 004: ID 1038:1360 Ideazon, Inc. 
+# echo 6-1:1.2 >/sys/bus/usb/drivers/usbhid/unbind
+.fi
+
+.SS 2) Button behavior observed
+When button 6 and 7 are binded to Tilt right/left behavior. They act like a wheel scroll and not as a normal button.
+For a normal button, hold button pressed, and release event will be sent once you release the button.
+For a wheel behavior, keep button pressed, and press/release events will be sent continously.
+
+.SH BUGS
+
+.PP
+USB read and write operations are not reliable. Some tuning (delay) must be done.
+
+.SH AUTHORS
+Written by Matthieu Crapet.
