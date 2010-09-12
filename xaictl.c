@@ -1220,7 +1220,7 @@ static void help(void)
             "      --b9=ROLE        set button 9 mapping (wheeldown)\n"
             "\n"
             "Buttons: left, middle, right, iebackward, ieforward,\n"
-            "         tiltleft, tiltright, wheelup, wheeldown.\n"
+            "         tiltleft, tiltright, wheelup, wheeldown, disable.\n"
             "\n"
             "Available global options:\n"
             "      --debug          debug mode (show usb frames data)\n"
