@@ -62,7 +62,7 @@
 #define XAI_MOUSE_LL_PONG_OR_RES           0x15
 #define XAI_MOUSE_LL_SET_PROFILE_NAME      0x17
 #define XAI_MOUSE_LL_GET_PROFILE_NAME      0x1A
-//#define XAI_MOUSE_LL_???                 0x24
+#define XAI_MOUSE_LL_SAVE_TO_FLASH         0x24
 
 struct xai_ll_message_header
 {
@@ -217,6 +217,7 @@ static int xai_device_write_packet(usb_dev_handle *, struct xai_ll_message *);
 
 static int xai_device_packet_print (FILE *, unsigned char [], int);
 static int xai_device_init (struct xai_context *);
+static int xai_device_write_to_flash (struct xai_context *);
 
 static int xai_profile_get_config (struct xai_context *, int, struct xai_profile *);
 static int xai_profile_set_config (struct xai_context *, int, struct xai_profile *);
@@ -534,6 +535,26 @@ static int xai_device_init (struct xai_context *ctx)
 
 device_init_err:
     return RET_ERROR_BUS;
+}
+
+/*
+ * Save all settings to flash (current profile index, ...)
+ */
+static int xai_device_write_to_flash (struct xai_context *ctx)
+{
+    struct xai_ll_message msg;
+    int ret;
+
+    memset(&msg, 0, sizeof(struct xai_ll_message));
+
+    msg.header.operation = XAI_MOUSE_LL_SAVE_TO_FLASH;
+    msg.header.id = ctx->cur_id;
+    ret = xai_device_write_packet(ctx->dev, &msg);
+
+    if (ctx->usb_debug)
+        xai_device_packet_print(stderr, (unsigned char *)&msg, 0);
+
+    return ret;
 }
 
 
@@ -1335,6 +1356,11 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "%s: error in xai_profile_set_current_index (%d)\n",
                             XAI_MOUSE_PROGRAM_NAME, ret);
             }
+
+            ret = xai_device_write_to_flash(&ctx);
+            if (ret != RET_OK)
+                fprintf(stderr, "%s: error in xai_device_write_to_flash (%d)\n",
+                        XAI_MOUSE_PROGRAM_NAME, ret);
 
         } else {
             fprintf(stderr, "%s: error in xai_profile_set_config (%d)\n",
