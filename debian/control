@@ -1,0 +1,15 @@
+Source: xaictl
+Section: admin
+Priority: standard
+Maintainer: Matthieu Crapet <mcrapet@gmail.com>
+Build-Depends: debhelper (>= 7.0.50~), libusb-dev
+Standards-Version: 3.8.4
+Homepage: http://github.com/mcrapet/xaictl
+Vcs-Git: git://github.com/mcrapet/xaictl.git
+
+Package: xaictl
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libusb-0.1-4 (>= 2:0.1.12)
+Description: SteelSeries XAI Mouse configuration tool
+ xaictl is a command-line tool for configuring your XAI mouse profiles:
+ button binding, speed, rate, sensibility parameters.
