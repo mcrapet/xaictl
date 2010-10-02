@@ -26,7 +26,7 @@
 #include <usb.h>
 
 #define XAI_MOUSE_PROGRAM_NAME    "xaictl"
-#define XAI_MOUSE_PROGRAM_VERSION "1.0"
+#define XAI_MOUSE_PROGRAM_VERSION "1.1"
 
 /*
  * SteelSeries defines & low-level protocol
@@ -179,6 +179,7 @@ struct xai_context
     /* command lines options */
     int usb_debug;
     int usb_rebind;
+    int set_current_profile;
 };
 
 
@@ -187,7 +188,7 @@ struct xai_context
  */
 
 static const char *button_setup[14] = {
-    "0000??",
+    "User macro (?)",
     "0100??",
     "Tilt Left",
     "Tilt Right",
@@ -639,6 +640,7 @@ static int xai_profile_get_config (struct xai_context *ctx, int index,
 
 /*
  * Fill xai_profile structure : profile name
+ * In the Windows tool, profile string length cannot exceed 11 characters.
  * \param[in] index 0-based profile number
  */
 static int xai_profile_get_name (struct xai_context *ctx, int index,
@@ -1218,6 +1220,7 @@ static void help(void)
             "      --b2=ROLE        set button 2 mapping (middle)\n"
             "                  ...\n"
             "      --b9=ROLE        set button 9 mapping (wheeldown)\n"
+            "      --current        set as current profile\n"
             "\n"
             "Buttons: left, middle, right, iebackward, ieforward,\n"
             "         tiltleft, tiltright, wheelup, wheeldown, disable.\n"
@@ -1251,6 +1254,7 @@ int main(int argc, char *argv[])
     {
         {"debug",    no_argument, &ctx.usb_debug, 1},
         {"rebind",   no_argument, &ctx.usb_rebind, 1},
+        {"current",  no_argument, &ctx.set_current_profile, 1},
         {"version",  no_argument, 0, 'v'},
         {"help",     no_argument, 0, 'h'},
         {"rate",     required_argument, 0, PROFILE_FIELD_RATE},
@@ -1345,12 +1349,12 @@ int main(int argc, char *argv[])
         return -2;
     }
 
-    if (newp.fields != 0) {
+    if ((newp.fields != 0) || (ctx.set_current_profile)) {
         ret = xai_profile_set_config (&ctx, profile_number, &newp);
         if (ret == RET_OK) {
 
             /* if current changeset apply to current profile, reload it */
-            if (profile_number == ctx.cur_index) {
+            if ((profile_number == ctx.cur_index) || (ctx.set_current_profile)) {
                 ret = xai_profile_set_current_index(&ctx, profile_number);
                 if (ret != RET_OK)
                     fprintf(stderr, "%s: error in xai_profile_set_current_index (%d)\n",
