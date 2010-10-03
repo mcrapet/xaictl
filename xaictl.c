@@ -992,7 +992,7 @@ static int button_setup_parse(const char *user_input, unsigned short *value)
     } else if (strcasecmp(user_input, "iebackward") == 0 ||
             (*user_input == 'b' && *(user_input+1) == 'w' &&
              *(user_input+2) == '\0')) {
-        *value = 4;
+        *value = 5;
     } else {
         return -1;
     }
