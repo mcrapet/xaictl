@@ -26,7 +26,7 @@
 #include <usb.h>
 
 #define XAI_MOUSE_PROGRAM_NAME    "xaictl"
-#define XAI_MOUSE_PROGRAM_VERSION "1.1"
+#define XAI_MOUSE_PROGRAM_VERSION "1.2"
 
 /*
  * SteelSeries defines & low-level protocol
@@ -156,7 +156,7 @@ struct xai_profile
 {
     unsigned long fields;
 
-    char name[PACKET_SIZE];
+    char name[XAI_MOUSE_LL_DATA_LENGTH];
     short rate;
     short aim;
     short accel;
@@ -225,6 +225,7 @@ static int xai_profile_set_config (struct xai_context *, int, struct xai_profile
 static int xai_profile_get_current_index (struct xai_context *, int *);
 static int xai_profile_set_current_index (struct xai_context *, int);
 static int xai_profile_get_name (struct xai_context *, int, struct xai_profile *);
+static int xai_profile_set_name (struct xai_context *, int, struct xai_profile *);
 static int xai_profile_print (FILE *, struct xai_profile *, int);
 static int xai_profile_change_req (struct xai_profile *, unsigned long, char *);
 
@@ -639,40 +640,6 @@ static int xai_profile_get_config (struct xai_context *ctx, int index,
 }
 
 /*
- * Fill xai_profile structure : profile name
- * In the Windows tool, profile string length cannot exceed 11 characters.
- * \param[in] index 0-based profile number
- */
-static int xai_profile_get_name (struct xai_context *ctx, int index,
-        struct xai_profile *profile)
-{
-    struct xai_ll_message msg;
-    struct xai_ll_message_header hdr;
-    int ret;
-
-    hdr.null_byte = 0;
-    hdr.operation = XAI_MOUSE_LL_GET_PROFILE_NAME;
-    hdr.id = ctx->cur_id;
-    hdr.part = 0;
-    hdr.argument1 = (unsigned char)index;
-    hdr.argument2 = 0;
-    ret = xai_device_read_packet(ctx->dev, &hdr, &msg);
-
-    if (ctx->usb_debug)
-        xai_device_packet_print(stderr, (unsigned char *)&msg, 0);
-
-    if (ret == RET_OK) {
-        ctx->cur_id = msg.header.id;
-        if (msg.u.data[0] == '\0')
-            profile->name[0] = 0;
-        else
-            strncpy(profile->name, &msg.u.data[0],
-                    XAI_MOUSE_LL_DATA_LENGTH);
-    }
-    return ret;
-}
-
-/*
  * Modify profile configuration according to xai_profile structure
  * \param[in] index 0-based profile number
  */
@@ -861,6 +828,65 @@ static int xai_profile_set_config (struct xai_context *ctx, int index,
             }
         }
     }
+
+    return ret;
+}
+
+/*
+ * Get profile name
+ * \param[in] index 0-based profile number
+ * \param[out] profile Will fill profile->name
+ */
+static int xai_profile_get_name (struct xai_context *ctx, int index,
+        struct xai_profile *profile)
+{
+    struct xai_ll_message msg;
+    struct xai_ll_message_header hdr;
+    int ret;
+
+    hdr.null_byte = 0;
+    hdr.operation = XAI_MOUSE_LL_GET_PROFILE_NAME;
+    hdr.id = ctx->cur_id;
+    hdr.part = 0;
+    hdr.argument1 = (unsigned char)index;
+    hdr.argument2 = 0;
+    ret = xai_device_read_packet(ctx->dev, &hdr, &msg);
+
+    if (ctx->usb_debug)
+        xai_device_packet_print(stderr, (unsigned char *)&msg, 0);
+
+    if (ret == RET_OK) {
+        ctx->cur_id = msg.header.id;
+        if (msg.u.data[0] == '\0')
+            profile->name[0] = 0;
+        else
+            strncpy(profile->name, &msg.u.data[0],
+                    XAI_MOUSE_LL_DATA_LENGTH);
+    }
+    return ret;
+}
+
+/*
+ * Set profile name
+ * \param[in] index 0-based profile number
+ * \param[in] profile New profile name is profile->name
+ */
+static int xai_profile_set_name (struct xai_context *ctx, int index,
+        struct xai_profile *profile)
+{
+    struct xai_ll_message msg;
+    int ret;
+
+    memset(&msg, 0, sizeof(struct xai_ll_message));
+
+    msg.header.operation = XAI_MOUSE_LL_SET_PROFILE_NAME;
+    msg.header.id = ctx->cur_id;
+    msg.header.argument1 = (unsigned char)index;
+    strncpy(&msg.u.data[4], profile->name, XAI_MOUSE_LL_DATA_LENGTH);
+    ret = xai_device_write_packet(ctx->dev, &msg);
+
+    if (ctx->usb_debug)
+        xai_device_packet_print(stderr, (unsigned char *)&msg, 0);
 
     return ret;
 }
@@ -1182,6 +1208,11 @@ static int xai_profile_change_req (struct xai_profile *p, unsigned long field,
             }
             break;
 
+        case PROFILE_FIELD_NAME:
+            strncpy(&p->name[0], arg, XAI_MOUSE_LL_DATA_LENGTH);
+            p->fields |= field;
+            break;
+
         default:
             return RET_ERROR_WRONG_PARAMETER;
     }
@@ -1221,6 +1252,7 @@ static void help(void)
             "                  ...\n"
             "      --b9=ROLE        set button 9 mapping (wheeldown)\n"
             "      --current        set as current profile\n"
+            "  -n, --name=STRING    set profile name (15 chars max)\n"
             "\n"
             "Buttons: left, middle, right, iebackward, ieforward,\n"
             "         tiltleft, tiltright, wheelup, wheeldown, disable.\n"
@@ -1272,8 +1304,9 @@ int main(int argc, char *argv[])
         {"b9",       required_argument, 0, PROFILE_FIELD_BUTTON_9},
         {"c1",       required_argument, 0, PROFILE_FIELD_CPI1},
         {"c2",       required_argument, 0, PROFILE_FIELD_CPI2},
-        { "lcdb",    required_argument, 0, PROFILE_FIELD_LCD_BRIGHTNESS},
-        { "lcdc",    required_argument, 0, PROFILE_FIELD_LCD_CONTRAST},
+        {"lcdb",     required_argument, 0, PROFILE_FIELD_LCD_BRIGHTNESS},
+        {"lcdc",     required_argument, 0, PROFILE_FIELD_LCD_CONTRAST},
+        {"name",     required_argument, 0, PROFILE_FIELD_NAME},
         {0, 0, 0, 0}
     };
 
@@ -1285,7 +1318,7 @@ int main(int argc, char *argv[])
 
     memset(&newp, 0, sizeof(struct xai_profile));
 
-    while ((c = getopt_long(argc, argv, "f:c:r:a:hv", long_options,
+    while ((c = getopt_long(argc, argv, "n:f:c:r:a:hv", long_options,
                     &option_index)) != -1) {
         switch (c & PROFILE_FIELD_MASK) {
             case 0:
@@ -1305,6 +1338,9 @@ int main(int argc, char *argv[])
                 break;
             case 'f':
                 ret = xai_profile_change_req(&newp, PROFILE_FIELD_FREEMOVE, optarg);
+                break;
+            case 'n':
+                ret = xai_profile_change_req(&newp, PROFILE_FIELD_NAME, optarg);
                 break;
 
             case 'h':
@@ -1358,6 +1394,13 @@ int main(int argc, char *argv[])
                 ret = xai_profile_set_current_index(&ctx, profile_number);
                 if (ret != RET_OK)
                     fprintf(stderr, "%s: error in xai_profile_set_current_index (%d)\n",
+                            XAI_MOUSE_PROGRAM_NAME, ret);
+            }
+
+            if ((newp.fields & PROFILE_FIELD_NAME) == PROFILE_FIELD_NAME) {
+                ret = xai_profile_set_name(&ctx, profile_number, &newp);
+                if (ret != RET_OK)
+                    fprintf(stderr, "%s: error in xai_profile_set_name (%d)\n",
                             XAI_MOUSE_PROGRAM_NAME, ret);
             }
 

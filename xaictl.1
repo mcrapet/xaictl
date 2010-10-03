@@ -1,4 +1,4 @@
-.TH "xaictl" "1" "October 2, 2010" "GPL" "Xai mouse configuration tool"
+.TH "xaictl" "1" "October 3, 2010" "GPL" "Xai mouse configuration tool"
 .SH "NAME"
 xaictl \- Command-line configuration tool for SteelSeries XAI Mouse
 
@@ -39,6 +39,12 @@ Set LCD brightness parameter. \fIN\fR is a number from 1 to 10.
 .TP
 .BI "   " " " --lcdc "=N"
 Set LCD contrast parameter. \fIN\fR is a number from 1 to 40.
+.TP
+.B "   " --current
+Set specified profile the current one.
+.TP
+.BI -n, " " --name "=STRING"
+Set profile name. Cannot exceed 15 characters (restricted to 11 characters in the official Windows tool).
 
 .SS Buttons mapping
 .TP
@@ -73,9 +79,6 @@ Set button 8 mapping (default: wheelup).
 .TP
 .BI "   " " " --b9 "=ROLE"
 Set button 9 mapping (default: wheeldown).
-.TP
-.B "   " --current
-Set specified profile the current one.
 
 .SS General options
 .TP
