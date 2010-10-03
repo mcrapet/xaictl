@@ -373,7 +373,7 @@ static int xai_uninit (struct xai_context *ctx)
 
     if (*ctx->usbhid_driver_intf != 0 && ctx->usb_rebind != 0)
         if (xai_usbhid_driver_workaround(ctx->usbhid_driver_intf, 1) != RET_OK)
-            fprintf(stderr, "err: can rebing interface, no permission\n");
+            fprintf(stderr, "err: can rebind interface, no permission\n");
 
     usb_close(ctx->dev);
     return RET_OK;
