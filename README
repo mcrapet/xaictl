@@ -1,6 +1,6 @@
 SteelSeries XAI Mouse configuration tool (for Linux)
 
-It is written in C using libusb-0.1 (legacy API).
+It is written in C using libusb-1.0 (stable API).
 
 Vendor specific protocol has been reversed with the help of DebugFS and
 USBMon and.. VirtualBox! It was tested with firmware 1.4.2.

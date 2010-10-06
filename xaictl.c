@@ -23,10 +23,10 @@
 #include <getopt.h>
 #include <sys/types.h>
 #include <dirent.h>
-#include <usb.h>
+#include <libusb-1.0/libusb.h>
 
 #define XAI_MOUSE_PROGRAM_NAME    "xaictl"
-#define XAI_MOUSE_PROGRAM_VERSION "1.2"
+#define XAI_MOUSE_PROGRAM_VERSION "2.0"
 
 /*
  * SteelSeries defines & low-level protocol
@@ -118,10 +118,10 @@ struct xai_ll_message
 
 
 /* USB related */
-#define PACKET_SIZE             64
-#define PACKET_TIMEOUT        1000
-#define PACKET_WRITE             0
-#define PACKET_READ              1
+#define PACKET_SIZE                64
+#define PACKET_TIMEOUT             1000
+#define PACKET_WRITE               (LIBUSB_ENDPOINT_OUT) /* host to device */
+#define PACKET_READ                (LIBUSB_ENDPOINT_IN)  /* device to host */
 
 /* Return values */
 #define RET_OK                     0
@@ -169,8 +169,8 @@ struct xai_profile
 
 struct xai_context
 {
-    usb_dev_handle *dev;
-    char usbhid_driver_intf[16]; /* for example: "4-2:1.2" */
+    libusb_context *libusb_ctx;
+    libusb_device_handle *dev;
 
     struct xai_profile p[XAI_MOUSE_PROFILE_NUM];
     unsigned char cur_id;
@@ -205,16 +205,13 @@ static const char *button_setup[14] = {
 };
 
 /* local prototypes */
-static int xai_usbhid_find_interface (int, int, int, char *, size_t);
-static int xai_usbhid_driver_workaround (char *, int);
-
 static int xai_init (int, int, int, struct xai_context *);
 static int xai_uninit (struct xai_context *);
 
-static int xai_device_transfer_packet(usb_dev_handle *, unsigned char [], int);
-static int xai_device_read_packet(usb_dev_handle *, struct xai_ll_message_header *,
+static int xai_device_transfer_packet(libusb_device_handle *, unsigned char [], int);
+static int xai_device_read_packet(libusb_device_handle *, struct xai_ll_message_header *,
         struct xai_ll_message *);
-static int xai_device_write_packet(usb_dev_handle *, struct xai_ll_message *);
+static int xai_device_write_packet(libusb_device_handle *, struct xai_ll_message *);
 
 static int xai_device_packet_print (FILE *, unsigned char [], int);
 static int xai_device_init (struct xai_context *);
@@ -231,131 +228,31 @@ static int xai_profile_change_req (struct xai_profile *, unsigned long, char *);
 
 
 /*
- * Linux kernel takes exclusive ownership of all interfaces.
- * Recurse sub-directories to find proper device string, then unbind interface.
- */
-static int xai_usbhid_find_interface (int vendor_id, int product_id,
-        int interface, char *intf_name, size_t intf_length)
-{
-    static const char *sysfs_path = "/sys/bus/usb/drivers/usbhid";
-    struct dirent *f;
-    DIR *d = opendir(sysfs_path);
-    FILE *fp;
-    char buffer[255];
-    int found = 0;
-    int ret = RET_ERROR_NO_DEVICE_FOUND;
-
-    if (!d)
-        return RET_ERROR_SYSTEM;
-
-    while ((f = readdir(d)) != NULL) {
-        size_t len = strlen(f->d_name);
-
-        if ((len >= 7) && (f->d_name[len - 1] == 0x30)) {
-            char id[5];
-
-            snprintf(buffer, sizeof(buffer), "%s/%s/uevent", sysfs_path,
-                    f->d_name);
-            fp = fopen(buffer, "r");
-            if (fp) {
-
-                while (fgets(buffer, sizeof(buffer), fp)) {
-                    if (!strncmp(buffer, "PRODUCT=", 8)) {
-                        snprintf(id, sizeof(id), "%x", vendor_id);
-                        if (strstr(buffer, id) != 0) {
-                            snprintf(id, sizeof(id), "%x", product_id);
-                            if (strstr(buffer, id) != 0) {
-                                f->d_name[len - 1] = 0x30 +
-                                    XAI_MOUSE_INTERFACE_NUM;
-                                strncpy(intf_name, f->d_name, intf_length);
-                                found = 1;
-                                break;
-                            }
-                        }
-                    }
-                } //while
-
-                fclose(fp);
-
-                if (found) {
-                    ret = RET_OK;
-                    break;
-                }
-            }
-        }
-    } //while
-
-    closedir(d);
-    return ret;
-}
-
-/*
- * Bind or unbind specified interface.
- */
-static int xai_usbhid_driver_workaround (char *intf_name, int bind)
-{
-    const char *sysfs_path = (bind) ?
-        "/sys/bus/usb/drivers/usbhid/bind" :
-        "/sys/bus/usb/drivers/usbhid/unbind";
-
-    int ret = RET_ERROR_WRONG_PARAMETER;
-
-    if (*intf_name != '\0') {
-        FILE *fp = fopen(sysfs_path, "w");
-
-        ret = RET_ERROR_NO_PERMISSION;
-        if (fp) {
-            if (fputs(intf_name, fp) > 0) {
-                fprintf(stderr, "echo %s > %s\n", intf_name, sysfs_path);
-                ret = RET_OK;
-            }
-            fclose(fp);
-        }
-    }
-
-    return ret;
-}
-
-
-/*
  * Initialize communication channel (libusb stuff) with device.
  */
 static int xai_init (int vendor_id, int product_id, int interface,
         struct xai_context *ctx)
 {
-    struct usb_bus *bus;
-    struct usb_device *dev;
     int ret = RET_OK;
 
-    usb_init();
-    usb_find_busses();
-    usb_find_devices();
+    libusb_init(&ctx->libusb_ctx);
 
-    for (bus = usb_get_busses(); bus != NULL; bus = bus->next)
-        for (dev = bus->devices; dev != NULL; dev = dev->next)
-            if (dev->descriptor.idVendor == vendor_id &&
-                    dev->descriptor.idProduct == product_id) {
-                ctx->dev = usb_open(dev);
-            }
+    ctx->dev = libusb_open_device_with_vid_pid(ctx->libusb_ctx, vendor_id,
+            product_id);
 
     if (ctx->dev) {
-        *ctx->usbhid_driver_intf = 0;
-        xai_usbhid_find_interface (vendor_id, product_id,
-                interface, &ctx->usbhid_driver_intf[0],
-                sizeof(ctx->usbhid_driver_intf));
-
-        if (usb_claim_interface(ctx->dev, interface) < 0) {
-            if ((ret = xai_usbhid_driver_workaround(ctx->usbhid_driver_intf, 0))
-                    == RET_OK) {
-                if (usb_claim_interface(ctx->dev, interface) < 0) {
-                    fprintf(stderr, "err: usb_claim_interface: %s\n",
-                            usb_strerror());
+        if (libusb_claim_interface(ctx->dev, interface) < 0) {
+            if (libusb_detach_kernel_driver(ctx->dev, interface) ==
+                    LIBUSB_SUCCESS) {
+                if ((ret = libusb_claim_interface(ctx->dev, interface)) < 0) {
+                    fprintf(stderr, "err: libusb_claim_interface: %d\n", ret);
                 } else {
                     return ret;
                 }
             }
 
-            usb_close(ctx->dev);
+            libusb_close(ctx->dev);
+            libusb_exit(ctx->libusb_ctx);
             ctx->dev = NULL;
         }
     } else {
@@ -370,13 +267,13 @@ static int xai_init (int vendor_id, int product_id, int interface,
  */
 static int xai_uninit (struct xai_context *ctx)
 {
-    usb_release_interface(ctx->dev, XAI_MOUSE_INTERFACE_NUM);
+    libusb_release_interface(ctx->dev, XAI_MOUSE_INTERFACE_NUM);
 
-    if (*ctx->usbhid_driver_intf != 0 && ctx->usb_rebind != 0)
-        if (xai_usbhid_driver_workaround(ctx->usbhid_driver_intf, 1) != RET_OK)
-            fprintf(stderr, "err: can rebind interface, no permission\n");
+    if (ctx->usb_rebind != 0)
+        libusb_attach_kernel_driver(ctx->dev, XAI_MOUSE_INTERFACE_NUM);
 
-    usb_close(ctx->dev);
+    libusb_close(ctx->dev);
+    libusb_exit(ctx->libusb_ctx);
     return RET_OK;
 }
 
@@ -385,7 +282,7 @@ static int xai_uninit (struct xai_context *ctx)
  * Control transfer message (libusb stuff)
  * direction := (PACKET_READ | PACKET_WRITE)
  */
-static int xai_device_transfer_packet(usb_dev_handle *dev,
+static int xai_device_transfer_packet(libusb_device_handle *dev,
         unsigned char packet[PACKET_SIZE], int direction)
 {
     int ret = RET_OK;
@@ -393,13 +290,13 @@ static int xai_device_transfer_packet(usb_dev_handle *dev,
     if (direction == PACKET_READ)
         memset(&packet[0], 0x55, PACKET_SIZE);
 
-    if (usb_control_msg(dev,
-                (direction == PACKET_WRITE) ? 0x21 : 0xA1, // HID class
+    if (libusb_control_transfer(dev,
+                LIBUSB_DT_HID | direction,
                 (direction == PACKET_WRITE) ? 0x09 : 0x01, // SetReport / GetReport
                 0x0300,                                    // Feature
                 XAI_MOUSE_INTERFACE_NUM,
-                (char *)packet, PACKET_SIZE, PACKET_TIMEOUT) < 0) {
-        fprintf(stderr, "err send: %s\n", usb_strerror());
+                packet, PACKET_SIZE, PACKET_TIMEOUT) < 0) {
+        fprintf(stderr, "err: libusb_control_transfer\n");
         ret = RET_ERROR_BUS;
     }
 
@@ -407,7 +304,7 @@ static int xai_device_transfer_packet(usb_dev_handle *dev,
 }
 
 /* For reading a message (64 bytes), we need 2 writes + 2 reads */
-static int xai_device_read_packet(usb_dev_handle *dev,
+static int xai_device_read_packet(libusb_device_handle *dev,
         struct xai_ll_message_header *in, struct xai_ll_message *out)
 {
     int ret;
@@ -455,7 +352,7 @@ static int xai_device_read_packet(usb_dev_handle *dev,
 }
 
 /* For writing a message (64 bytes), we need 1 write + 1 read */
-static int xai_device_write_packet(usb_dev_handle *dev,
+static int xai_device_write_packet(libusb_device_handle *dev,
         struct xai_ll_message *in)
 {
     int ret = RET_ERROR_BUS;

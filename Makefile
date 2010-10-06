@@ -4,7 +4,7 @@
 CC=gcc
 CFLAGS=-Wall
 
-LIBS=-lusb
+LIBS=-lusb-1.0
 
 all: xaictl.c
 	$(CC) $(CFLAGS) $? $(LIBS) -o xaictl
