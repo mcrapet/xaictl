@@ -20,7 +20,6 @@ ATTRS{idVendor}=="1038", ATTRS{idProduct}=="1360", PROGRAM="/bin/sh -c 'echo -n 
 2. Software limitations
 
 * No macro entry
-* Modify profile name (unimplemented)
 * Handle left/right hand mode flag
 
 3. Known issues
