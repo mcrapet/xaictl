@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <getopt.h>
 #include <sys/types.h>
 #include <dirent.h>
@@ -235,7 +236,8 @@ static int xai_init (int vendor_id, int product_id, int interface,
 {
     int ret = RET_OK;
 
-    libusb_init(&ctx->libusb_ctx);
+    if (libusb_init(&ctx->libusb_ctx) < 0)
+        return RET_ERROR_SYSTEM;
 
     ctx->dev = libusb_open_device_with_vid_pid(ctx->libusb_ctx, vendor_id,
             product_id);
@@ -1121,7 +1123,7 @@ static int xai_profile_change_req (struct xai_profile *p, unsigned long field,
 static void version(void)
 {
     fprintf(stdout, "%s %s\n"
-            "Copyright © 2010 Free Software Foundation, Inc.\n"
+            "Copyright Â© 2010 Free Software Foundation, Inc.\n"
             "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n"
             "This is free software: you are free to change and redistribute it.\n"
             "There is NO WARRANTY, to the extent permitted by law.\n"
@@ -1320,5 +1322,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-// vim: filetype=c enc=latin1 shiftwidth=4 tabstop=4 expandtab
+// vim: set sw=4 et fenc=utf-8:
